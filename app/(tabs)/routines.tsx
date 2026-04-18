@@ -1,39 +1,35 @@
+import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
-import { useRouter } from "expo-router";
-import React from "react";
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
-
-type Routine = {
-  id: string;
-  nombre: string;
-  ejercicios: number;
-  creador: string;
-  participantes: string[];
-};
-
-const ROUTINES: Routine[] = [
-  {
-    id: "1",
-    nombre: "Rutina de fuerza",
-    ejercicios: 6,
-    creador: "Creada por ti",
-    participantes: ["Juan", "María", "Pedro"],
-  },
-  {
-    id: "2",
-    nombre: "Rutina de cardio",
-    ejercicios: 5,
-    creador: "Creada por ti",
-    participantes: ["Carlos", "Laura", "Ana"],
-  },
-  {
-    id: "3",
-    nombre: "Rutina de core",
-    ejercicios: 4,
-    creador: "Creada por ti",
-    participantes: ["María", "Diego"],
-  },
-];
+import { Friend } from "@/models/friend";
+import { RoutineShare } from "@/models/routineShare";
+import { Routine } from "@/models/workout";
+import { combineSelectedRoutinesWithFriend } from "@/services/combineRoutineService";
+import { getUserRoutines } from "@/services/routineService";
+import {
+  acceptRoutineShare,
+  getReceivedRoutineShares,
+  getShareableFriends,
+  rejectRoutineShare,
+  shareRoutineWithFriend,
+} from "@/services/routineShareService";
+import {
+  getSelectedRoutine,
+  setSelectedRoutine as saveSelectedRoutine,
+} from "@/services/trainingService";
+import { useFocusEffect, useRouter } from "expo-router";
+import React, { useCallback, useMemo, useState } from "react";
+import {
+  Alert,
+  Modal,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
+import { t } from "../locales/translations";
+import { createGlobalStyles } from "../styles/createGlobalStyles";
 
 function AvatarStack({
   participants,
@@ -42,11 +38,13 @@ function AvatarStack({
   participants: string[];
   colors: any;
 }) {
+  if (!participants.length) return null;
+
   return (
     <View style={{ flexDirection: "row", marginTop: 10 }}>
       {participants.slice(0, 3).map((name, index) => (
         <View
-          key={name}
+          key={`${name}-${index}`}
           style={{
             width: 30,
             height: 30,
@@ -70,140 +68,474 @@ function AvatarStack({
   );
 }
 
+function ShareFriendCard({
+  friend,
+  onShare,
+  styles,
+}: {
+  friend: Friend;
+  onShare: (friend: Friend) => void;
+  styles: any;
+}) {
+  return (
+    <View style={styles.userCard}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.userName}>{friend.name}</Text>
+        <Text style={styles.userEmail}>{friend.email}</Text>
+        <Text style={styles.userEmail}>@{friend.username}</Text>
+      </View>
+
+      <Pressable onPress={() => onShare(friend)} style={styles.sendButton}>
+        <Text style={styles.sendButtonText}>Enviar</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function CombineFriendCard({
+  friend,
+  onCombine,
+  styles,
+}: {
+  friend: Friend;
+  onCombine: (friend: Friend) => void;
+  styles: any;
+}) {
+  return (
+    <View style={styles.userCard}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.userName}>{friend.name}</Text>
+        <Text style={styles.userEmail}>{friend.email}</Text>
+        <Text style={styles.userEmail}>@{friend.username}</Text>
+      </View>
+
+      <Pressable onPress={() => onCombine(friend)} style={styles.sendButton}>
+        <Text style={styles.sendButtonText}>Combinar</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function RoutineShareCard({
+  share,
+  onAccept,
+  onReject,
+  styles,
+}: {
+  share: RoutineShare;
+  onAccept: (share: RoutineShare) => void;
+  onReject: (share: RoutineShare) => void;
+  styles: any;
+}) {
+  return (
+    <View style={styles.routineCard}>
+      <View style={styles.routineCardAccent} />
+      <View style={styles.routineCardContent}>
+        <Text style={styles.routineCardTitle}>
+          {share.routineName || "Rutina compartida"}
+        </Text>
+
+        <Text style={styles.routineCardCreator}>
+          Compartida por: {share.ownerName || share.ownerUserId}
+        </Text>
+
+        <Pressable
+          style={[styles.actionButton, styles.primaryButton, { marginTop: 12 }]}
+          onPress={() => onAccept(share)}
+        >
+          <Text style={[styles.actionText, styles.primaryButtonText]}>
+            Aceptar
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.actionButton, styles.secondaryButton]}
+          onPress={() => onReject(share)}
+        >
+          <Text style={[styles.actionText, styles.secondaryButtonText]}>
+            Rechazar
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 export default function RoutinesScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const { colors } = useTheme();
+  const { language } = useLanguage();
+  const styles = useMemo(() => createGlobalStyles(colors), [colors]);
 
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-      paddingHorizontal: 20,
-      paddingTop: 20,
-    },
-    headerRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: 18,
-    },
-    title: {
-      color: colors.text,
-      fontSize: 30,
-      fontWeight: "700",
-    },
-    subtitle: {
-      color: colors.secondaryText,
-      marginTop: 2,
-    },
-    createButton: {
-      backgroundColor: colors.primary,
-      borderRadius: 12,
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-    },
-    createButtonText: {
-      color: colors.background,
-      fontWeight: "700",
-      fontSize: 14,
-    },
-    list: {
-      gap: 12,
-    },
-    card: {
-      backgroundColor: colors.card,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: "#1E3650",
-      overflow: "hidden",
-      flexDirection: "row",
-      shadowColor: "#000",
-      shadowOpacity: 0.22,
-      shadowRadius: 9,
-      shadowOffset: { width: 0, height: 5 },
-      elevation: 3,
-    },
-    cardAccent: {
-      width: 6,
-      backgroundColor: colors.primary,
-    },
-    cardContent: {
-      padding: 14,
-      flex: 1,
-    },
-    cardTitle: {
-      color: colors.text,
-      fontSize: 18,
-      fontWeight: "700",
-      marginBottom: 6,
-    },
-    cardMeta: {
-      color: colors.secondaryText,
-      fontSize: 14,
-    },
-    cardCreator: {
-      color: colors.primary,
-      fontSize: 13,
-      marginTop: 8,
-      fontWeight: "600",
-    },
-    participantsLabel: {
-      color: colors.secondaryText,
-      fontSize: 13,
-      marginTop: 10,
-    },
-    space: {
-      paddingTop: 30,
-    },
-  });
+  const [routines, setRoutines] = useState<Routine[]>([]);
+  const [selectedRoutineId, setSelectedRoutineId] = useState<string | null>(null);
+  const [shareModalVisible, setShareModalVisible] = useState(false);
+  const [combineModalVisible, setCombineModalVisible] = useState(false);
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [selectedRoutine, setSelectedRoutine] = useState<Routine | null>(null);
+  const [receivedShares, setReceivedShares] = useState<RoutineShare[]>([]);
+
+  const loadRoutines = async () => {
+    if (!user) return;
+    const data = await getUserRoutines(user.id);
+    setRoutines(data);
+  };
+
+  const loadSelectedRoutine = async () => {
+    if (!user) return;
+    const data = await getSelectedRoutine(user.id);
+    setSelectedRoutineId(data?.selectedRoutineId || null);
+  };
+
+  const loadFriends = async () => {
+    if (!user) return;
+    const data = await getShareableFriends(user.id);
+    setFriends(data);
+  };
+
+  const loadReceivedShares = async () => {
+    if (!user) return;
+    const data = await getReceivedRoutineShares(user.id);
+    setReceivedShares(data);
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadRoutines();
+      void loadSelectedRoutine();
+      void loadReceivedShares();
+    }, [user]),
+  );
+
+  const handleStartRoutine = (routine: Routine) => {
+    router.push({
+      pathname: "/workout",
+      params: { routine: JSON.stringify(routine) },
+    });
+  };
+
+  const handleSelectRoutine = async (routine: Routine) => {
+    if (!user) return;
+
+    try {
+      await saveSelectedRoutine(user.id, routine.id);
+      setSelectedRoutineId(routine.id);
+      Alert.alert("Éxito", "Rutina seleccionada como rutina del día.");
+    } catch {
+      Alert.alert("Error", "No se pudo seleccionar la rutina.");
+    }
+  };
+
+  const handleOpenShare = async (routine: Routine) => {
+    setSelectedRoutine(routine);
+    await loadFriends();
+    setShareModalVisible(true);
+  };
+
+  const handleOpenCombine = async () => {
+    if (!user) return;
+
+    if (!selectedRoutineId) {
+      Alert.alert(
+        "Selecciona una rutina",
+        "Primero debes seleccionar tu rutina del día antes de combinarla.",
+      );
+      return;
+    }
+
+    await loadFriends();
+    setCombineModalVisible(true);
+  };
+
+  const handleShareWithFriend = async (friend: Friend) => {
+    if (!user || !selectedRoutine) return;
+
+    try {
+      await shareRoutineWithFriend(
+        user.id,
+        friend.friendUserId,
+        selectedRoutine.id,
+      );
+
+      Alert.alert("Éxito", t(language, "shareSent"));
+      setShareModalVisible(false);
+      setSelectedRoutine(null);
+    } catch (error: any) {
+      Alert.alert(
+        "Error",
+        error?.message || "No se pudo compartir la rutina.",
+      );
+    }
+  };
+
+  const handleCombineWithFriend = async (friend: Friend) => {
+    if (!user) return;
+
+    try {
+      await combineSelectedRoutinesWithFriend(
+        user.id,
+        friend.friendUserId,
+        friend.name,
+      );
+
+      Alert.alert("Éxito", "Rutina combinada creada correctamente.");
+      setCombineModalVisible(false);
+      await loadRoutines();
+    } catch (error: any) {
+      Alert.alert(
+        "Error",
+        error?.message || "No se pudieron combinar las rutinas.",
+      );
+    }
+  };
+
+  const handleAcceptShare = async (share: RoutineShare) => {
+    if (!user) return;
+
+    try {
+      await acceptRoutineShare(user.id, share);
+      Alert.alert("Éxito", t(language, "routineAccepted"));
+      await loadRoutines();
+      await loadReceivedShares();
+    } catch (error: any) {
+      Alert.alert(
+        "Error",
+        error?.message || "No se pudo aceptar la rutina compartida.",
+      );
+    }
+  };
+
+  const handleRejectShare = async (share: RoutineShare) => {
+    try {
+      await rejectRoutineShare(share.id);
+      Alert.alert("Éxito", t(language, "routineRejected"));
+      await loadReceivedShares();
+    } catch {
+      Alert.alert("Error", "No se pudo rechazar la rutina compartida.");
+    }
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.space} />
+    <SafeAreaView style={styles.screen}>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={styles.space} />
 
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.title}>Rutinas</Text>
-          <Text style={styles.subtitle}>Rutinas compartidas</Text>
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.title}>{t(language, "routines")}</Text>
+            <Text style={styles.subtitle}>{t(language, "sharedRoutines")}</Text>
+          </View>
+
+          <Pressable
+            style={styles.createButton}
+            onPress={() => router.push("/create-routine")}
+          >
+            <Text style={styles.createButtonText}>
+              {t(language, "createRoutine")}
+            </Text>
+          </Pressable>
         </View>
 
         <Pressable
-          style={styles.createButton}
-          onPress={() => router.push("/create-routine")}
+          style={[styles.actionButton, styles.primaryButton, { marginBottom: 16 }]}
+          onPress={handleOpenCombine}
         >
-          <Text style={styles.createButtonText}>Crear rutina</Text>
+          <Text style={[styles.actionText, styles.primaryButtonText]}>
+            Combinar con amigo
+          </Text>
         </Pressable>
-      </View>
 
-      <View style={styles.list}>
-        {ROUTINES.map((routine) => (
-          <Pressable
-            key={routine.id}
-            style={styles.card}
-            onPress={() => router.push(`/${routine.id}`)}
-          >
-            <View style={styles.cardAccent} />
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>
+            {t(language, "receivedRoutineShares")}
+          </Text>
 
-            <View style={styles.cardContent}>
-              <Text style={styles.cardTitle}>{routine.nombre}</Text>
-              <Text style={styles.cardMeta}>
-                {routine.ejercicios} ejercicios
-              </Text>
-
-              <Text style={styles.cardCreator}>{routine.creador}</Text>
-
-              <Text style={styles.participantsLabel}>
-                Participantes: {routine.participantes.join(", ")}
-              </Text>
-
-              <AvatarStack
-                participants={routine.participantes}
-                colors={colors}
-              />
+          {receivedShares.length === 0 ? (
+            <Text style={styles.emptyText}>{t(language, "noRoutineShares")}</Text>
+          ) : (
+            <View style={styles.routineList}>
+              {receivedShares.map((share) => (
+                <RoutineShareCard
+                  key={share.id}
+                  share={share}
+                  onAccept={handleAcceptShare}
+                  onReject={handleRejectShare}
+                  styles={styles}
+                />
+              ))}
             </View>
-          </Pressable>
-        ))}
-      </View>
+          )}
+        </View>
+
+        <View style={styles.routineList}>
+          {routines.map((routine) => {
+            const isSelected = selectedRoutineId === routine.id;
+
+            return (
+              <View key={routine.id} style={styles.routineCard}>
+                <View style={styles.routineCardAccent} />
+
+                <View style={styles.routineCardContent}>
+                  <Text style={styles.routineCardTitle}>{routine.nombre}</Text>
+                  <Text style={styles.routineCardMeta}>
+                    {routine.ejercicios.length} ejercicios
+                  </Text>
+                  <Text style={styles.routineCardCreator}>{routine.creador}</Text>
+                  <Text style={styles.routineParticipantsLabel}>
+                    Participantes:{" "}
+                    {routine.participantes.length
+                      ? routine.participantes.join(", ")
+                      : "Ninguno"}
+                  </Text>
+
+                  {isSelected ? (
+                    <Text
+                      style={{
+                        color: colors.primary,
+                        fontWeight: "700",
+                        marginTop: 8,
+                      }}
+                    >
+                      Rutina del día seleccionada
+                    </Text>
+                  ) : null}
+
+                  <AvatarStack
+                    participants={routine.participantes}
+                    colors={colors}
+                  />
+
+                  <Pressable
+                    style={[
+                      styles.actionButton,
+                      styles.primaryButton,
+                      { marginTop: 12 },
+                    ]}
+                    onPress={() => handleStartRoutine(routine)}
+                  >
+                    <Text style={[styles.actionText, styles.primaryButtonText]}>
+                      {t(language, "start")}
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={[styles.actionButton, styles.secondaryButton]}
+                    onPress={() => handleSelectRoutine(routine)}
+                  >
+                    <Text style={[styles.actionText, styles.secondaryButtonText]}>
+                      Seleccionar rutina
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={[styles.actionButton, styles.secondaryButton]}
+                    onPress={() => router.push(`/edit-routine/${routine.id}`)}
+                  >
+                    <Text style={[styles.actionText, styles.secondaryButtonText]}>
+                      {t(language, "edit")}
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={[styles.actionButton, styles.secondaryButton]}
+                    onPress={() => handleOpenShare(routine)}
+                  >
+                    <Text style={[styles.actionText, styles.secondaryButtonText]}>
+                      {t(language, "share")}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+
+        <View style={{ height: 30 }} />
+      </ScrollView>
+
+      <Modal visible={shareModalVisible} animationType="slide" transparent>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{t(language, "shareRoutine")}</Text>
+
+            <Text style={styles.subtitle}>{t(language, "selectFriend")}</Text>
+
+            <ScrollView
+              style={{ maxHeight: 300, marginTop: 12 }}
+              showsVerticalScrollIndicator={false}
+            >
+              {friends.length === 0 ? (
+                <Text style={styles.emptyText}>
+                  {t(language, "noFriendsToShare")}
+                </Text>
+              ) : (
+                friends.map((friend) => (
+                  <ShareFriendCard
+                    key={friend.id}
+                    friend={friend}
+                    onShare={handleShareWithFriend}
+                    styles={styles}
+                  />
+                ))
+              )}
+            </ScrollView>
+
+            <Pressable
+              style={[styles.actionButton, styles.secondaryButton]}
+              onPress={() => {
+                setShareModalVisible(false);
+                setSelectedRoutine(null);
+              }}
+            >
+              <Text style={[styles.actionText, styles.secondaryButtonText]}>
+                {t(language, "close")}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={combineModalVisible} animationType="slide" transparent>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Combinar rutinas</Text>
+
+            <Text style={styles.subtitle}>
+              Se combinará tu rutina seleccionada con la rutina seleccionada de tu amigo.
+            </Text>
+
+            <ScrollView
+              style={{ maxHeight: 300, marginTop: 12 }}
+              showsVerticalScrollIndicator={false}
+            >
+              {friends.length === 0 ? (
+                <Text style={styles.emptyText}>
+                  No tienes amigos disponibles para combinar.
+                </Text>
+              ) : (
+                friends.map((friend) => (
+                  <CombineFriendCard
+                    key={friend.id}
+                    friend={friend}
+                    onCombine={handleCombineWithFriend}
+                    styles={styles}
+                  />
+                ))
+              )}
+            </ScrollView>
+
+            <Pressable
+              style={[styles.actionButton, styles.secondaryButton]}
+              onPress={() => setCombineModalVisible(false)}
+            >
+              <Text style={[styles.actionText, styles.secondaryButtonText]}>
+                Cerrar
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

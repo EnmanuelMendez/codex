@@ -1,6 +1,10 @@
 export type FriendRequest = {
     id: string;
-    email: string;
-    name: string;
-    status: 'sent' | 'received';
+    fromUserId: string;
+    toUserId: string;
+    fromUsername: string;
+    fromEmail: string;
+    fromName: string;
+    status: "pending" | "accepted" | "rejected";
+    type: "friend_request";
 };

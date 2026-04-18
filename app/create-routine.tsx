@@ -1,292 +1,273 @@
-import { useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import { t } from "@/app/locales/translations";
+import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
+import { useTheme } from "@/context/ThemeContext";
+import { ExerciseCatalogItem } from "@/models/workout";
 import {
+  addRoutineExercise,
+  createRoutineDraft,
+  getAvailableExercises,
+  getRoutineExercises,
+  updateRoutine,
+} from "@/services/routineService";
+import { router } from "expo-router";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  Alert,
   Pressable,
   SafeAreaView,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-import { useTheme } from "../context/ThemeContext";
-
-const FRIENDS = ["Juan", "María", "Carlos", "Laura"];
+import { createGlobalStyles } from "./styles/createGlobalStyles";
 
 export default function CreateRoutineScreen() {
-  const router = useRouter();
+  const { user } = useAuth();
   const { colors } = useTheme();
+  const { language } = useLanguage();
+  const styles = useMemo(() => createGlobalStyles(colors), [colors]);
 
-  const [selectedFriends, setSelectedFriends] = useState<string[]>([
-    "Juan",
-    "María",
-  ]);
+  const [routineName, setRoutineName] = useState("");
+  const [restSeconds, setRestSeconds] = useState("60");
+  const [catalog, setCatalog] = useState<ExerciseCatalogItem[]>([]);
+  const [selectedExerciseId, setSelectedExerciseId] = useState("");
+  const [sets, setSets] = useState("3");
+  const [reps, setReps] = useState("12");
+  const [routineId, setRoutineId] = useState<string | null>(null);
+  const [exercises, setExercises] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const selectedText = useMemo(() => {
-    if (selectedFriends.length === 0) return "Sin amigos seleccionados";
-    return `Seleccionados: ${selectedFriends.join(", ")}`;
-  }, [selectedFriends]);
+  const selectedExercise = catalog.find((x) => x.id === selectedExerciseId);
 
-  const toggleFriend = (friend: string) => {
-    setSelectedFriends((prev) =>
-      prev.includes(friend)
-        ? prev.filter((name) => name !== friend)
-        : [...prev, friend],
-    );
+  const loadCatalog = async () => {
+    try {
+      const data = await getAvailableExercises();
+      setCatalog(data);
+    } catch {
+      Alert.alert("Error", "No se pudieron cargar los ejercicios.");
+    }
   };
 
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    content: {
-      paddingHorizontal: 20,
-      paddingTop: 20,
-      paddingBottom: 120,
-    },
-    title: {
-      color: colors.text,
-      fontSize: 30,
-      fontWeight: "700",
-      marginBottom: 16,
-    },
-    card: {
-      backgroundColor: colors.card,
-      borderRadius: 16,
-      padding: 14,
-      borderColor: "#1E3650",
-      borderWidth: 1,
-      marginBottom: 14,
-    },
-    label: {
-      color: colors.text,
-      fontSize: 14,
-      fontWeight: "600",
-      marginBottom: 8,
-      marginTop: 6,
-    },
-    input: {
-      backgroundColor: colors.card,
-      color: colors.text,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: "#1E3650",
-      paddingHorizontal: 12,
-      paddingVertical: 11,
-    },
-    sectionTitle: {
-      color: colors.primary,
-      fontSize: 16,
-      fontWeight: "700",
-      marginTop: 12,
-    },
-    row: {
-      flexDirection: "row",
-      gap: 10,
-    },
-    rowItem: {
-      flex: 1,
-    },
-    addButton: {
-      marginTop: 14,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.primary,
-      paddingVertical: 11,
-      alignItems: "center",
-      backgroundColor: "rgba(163, 255, 18, 0.12)",
-    },
-    addButtonText: {
-      color: colors.primary,
-      fontWeight: "700",
-    },
-    examplesCard: {
-      backgroundColor: colors.card,
-      borderRadius: 16,
-      padding: 14,
-      borderColor: "#1E3650",
-      borderWidth: 1,
-      marginBottom: 14,
-    },
-    examplesTitle: {
-      color: colors.text,
-      fontSize: 16,
-      fontWeight: "700",
-      marginBottom: 10,
-    },
-    exampleRow: {
-      color: colors.secondaryText,
-      marginBottom: 6,
-    },
-    shareCard: {
-      backgroundColor: colors.card,
-      borderRadius: 16,
-      padding: 14,
-      borderColor: "#1E3650",
-      borderWidth: 1,
-    },
-    shareTitle: {
-      color: colors.text,
-      fontSize: 16,
-      fontWeight: "700",
-      marginBottom: 10,
-    },
-    chipsWrap: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-    },
-    friendChip: {
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: "#2A4360",
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      backgroundColor: colors.card,
-    },
-    friendChipSelected: {
-      borderColor: colors.primary,
-      backgroundColor: "rgba(163, 255, 18, 0.16)",
-    },
-    friendChipText: {
-      color: colors.secondaryText,
-      fontWeight: "600",
-    },
-    friendChipTextSelected: {
-      color: colors.primary,
-    },
-    selectedFriendsText: {
-      marginTop: 10,
-      color: colors.secondaryText,
-      fontSize: 13,
-    },
-    footer: {
-      position: "absolute",
-      left: 0,
-      right: 0,
-      bottom: 0,
-      paddingHorizontal: 20,
-      paddingTop: 10,
-      paddingBottom: 20,
-      backgroundColor: colors.background,
-    },
-    saveButton: {
-      backgroundColor: colors.primary,
-      borderRadius: 14,
-      alignItems: "center",
-      paddingVertical: 14,
-    },
-    saveButtonText: {
-      color: colors.background,
-      fontSize: 16,
-      fontWeight: "800",
-    },
-    space: {
-      flex: 0,
-      paddingTop: 40,
-    },
-  });
+  const loadExercises = async (id: string) => {
+    if (!user) return;
+    const data = await getRoutineExercises(user.id, id);
+    setExercises(data);
+  };
+
+  useEffect(() => {
+    void loadCatalog();
+  }, []);
+
+  const ensureDraftRoutine = async (): Promise<string | null> => {
+    if (!user) return null;
+    if (routineId) return routineId;
+
+    if (!routineName.trim()) {
+      Alert.alert("Dato requerido", "Ingresa el nombre de la rutina.");
+      return null;
+    }
+
+    const parsedRest = Number(restSeconds);
+    if (Number.isNaN(parsedRest) || parsedRest < 0) {
+      Alert.alert("Dato inválido", "Ingresa un descanso válido.");
+      return null;
+    }
+
+    const newRoutineId = await createRoutineDraft(user.id, {
+      nombre: routineName.trim(),
+      descansoSegundos: parsedRest,
+    });
+
+    setRoutineId(newRoutineId);
+    return newRoutineId;
+  };
+
+  const handleAddExercise = async () => {
+    if (!user) return;
+
+    if (!selectedExercise) {
+      Alert.alert("Dato requerido", "Selecciona un ejercicio.");
+      return;
+    }
+
+    const parsedSets = Number(sets);
+    const parsedReps = Number(reps);
+
+    if (Number.isNaN(parsedSets) || parsedSets <= 0) {
+      Alert.alert("Dato inválido", "Ingresa una cantidad de series válida.");
+      return;
+    }
+
+    if (Number.isNaN(parsedReps) || parsedReps <= 0) {
+      Alert.alert(
+        "Dato inválido",
+        "Ingresa una cantidad de repeticiones válida.",
+      );
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const currentRoutineId = await ensureDraftRoutine();
+      if (!currentRoutineId) return;
+
+      await addRoutineExercise(user.id, currentRoutineId, {
+        exercise: selectedExercise,
+        sets: parsedSets,
+        reps: parsedReps,
+        order: exercises.length + 1,
+      });
+
+      await loadExercises(currentRoutineId);
+
+      setSelectedExerciseId("");
+      setSets("3");
+      setReps("12");
+    } catch (error) {
+      console.log("ERROR AL AGREGAR EJERCICIO:", error);
+      Alert.alert("Error", "No se pudo agregar el ejercicio.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFinish = async () => {
+    if (!user) return;
+
+    const currentRoutineId = await ensureDraftRoutine();
+    if (!currentRoutineId) return;
+
+    await updateRoutine(user.id, currentRoutineId, {
+      nombre: routineName.trim(),
+      descansoSegundos: Number(restSeconds),
+    });
+
+    router.replace("/(tabs)/routines");
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.space} />
+    <SafeAreaView style={styles.screen}>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={styles.topSpace} />
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.title}>Crear rutina</Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.title}>{t(language, "createRoutine")}</Text>
 
-        <View style={styles.card}>
-          <Text style={styles.label}>Nombre de la rutina</Text>
-          <TextInput
-            placeholder="Ej: Rutina de tren superior"
-            placeholderTextColor={colors.secondaryText}
-            style={styles.input}
-          />
-
-          <Text style={styles.sectionTitle}>Ejercicios</Text>
-
-          <Text style={styles.label}>Nombre del ejercicio</Text>
-          <TextInput
-            placeholder="Ej: Flexiones"
-            placeholderTextColor={colors.secondaryText}
-            style={styles.input}
-          />
-
-          <View style={styles.row}>
-            <View style={styles.rowItem}>
-              <Text style={styles.label}>Series</Text>
-              <TextInput
-                placeholder="3"
-                placeholderTextColor={colors.secondaryText}
-                style={styles.input}
-              />
-            </View>
-            <View style={styles.rowItem}>
-              <Text style={styles.label}>Repeticiones</Text>
-              <TextInput
-                placeholder="12"
-                placeholderTextColor={colors.secondaryText}
-                style={styles.input}
-              />
-            </View>
-          </View>
-
-          <Pressable style={styles.addButton}>
-            <Text style={styles.addButtonText}>Agregar ejercicio</Text>
+          <Pressable onPress={() => router.back()} style={styles.iconButton}>
+            <Text style={{ color: colors.text }}>✕</Text>
           </Pressable>
         </View>
 
-        <View style={styles.examplesCard}>
-          <Text style={styles.examplesTitle}>Ejercicios agregados</Text>
-          <Text style={styles.exampleRow}>
-            Flexiones – 3 series – 12 repeticiones
-          </Text>
-          <Text style={styles.exampleRow}>
-            Sentadillas – 3 series – 15 repeticiones
-          </Text>
+        <View style={styles.card}>
+          <Text style={styles.label}>{t(language, "routineName")}</Text>
+          <TextInput
+            value={routineName}
+            onChangeText={setRoutineName}
+            placeholder={t(language, "routineName")}
+            placeholderTextColor="#8AA0B8"
+            style={styles.input}
+          />
+
+          <Text style={styles.label}>{t(language, "restSeconds")}</Text>
+          <TextInput
+            value={restSeconds}
+            onChangeText={setRestSeconds}
+            placeholder="60"
+            keyboardType="numeric"
+            placeholderTextColor="#8AA0B8"
+            style={styles.input}
+          />
         </View>
 
-        <View style={styles.shareCard}>
-          <Text style={styles.shareTitle}>Compartir con amigos</Text>
-          <View style={styles.chipsWrap}>
-            {FRIENDS.map((friend) => {
-              const selected = selectedFriends.includes(friend);
-              return (
-                <Pressable
-                  key={friend}
-                  onPress={() => toggleFriend(friend)}
-                  style={[
-                    styles.friendChip,
-                    selected && styles.friendChipSelected,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.friendChipText,
-                      selected && styles.friendChipTextSelected,
-                    ]}
-                  >
-                    {friend}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-          <Text style={styles.selectedFriendsText}>{selectedText}</Text>
-        </View>
-      </ScrollView>
+        <View style={styles.card}>
+          <Text style={styles.label}>{t(language, "selectExercise")}</Text>
 
-      <View style={styles.footer}>
+          {catalog.map((exercise) => (
+            <Pressable
+              key={exercise.id}
+              onPress={() => setSelectedExerciseId(exercise.id)}
+              style={[
+                styles.listItem,
+                selectedExerciseId === exercise.id &&
+                  styles.segmentButtonActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.listItemText,
+                  selectedExerciseId === exercise.id &&
+                    styles.segmentTextActive,
+                ]}
+              >
+                {exercise.nombre} - {exercise.grupo}
+              </Text>
+            </Pressable>
+          ))}
+
+          <Text style={styles.label}>{t(language, "sets")}</Text>
+          <TextInput
+            value={sets}
+            onChangeText={setSets}
+            keyboardType="numeric"
+            placeholder="3"
+            placeholderTextColor="#8AA0B8"
+            style={styles.input}
+          />
+
+          <Text style={styles.label}>{t(language, "reps")}</Text>
+          <TextInput
+            value={reps}
+            onChangeText={setReps}
+            keyboardType="numeric"
+            placeholder="12"
+            placeholderTextColor="#8AA0B8"
+            style={styles.input}
+          />
+
+          <Pressable
+            style={[styles.actionButton, styles.primaryButton]}
+            onPress={handleAddExercise}
+            disabled={loading}
+          >
+            <Text style={[styles.actionText, styles.primaryButtonText]}>
+              {loading ? t(language, "saving") : t(language, "addExercise")}
+            </Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.label}>{t(language, "exerciseOrder")}</Text>
+
+          {exercises.length === 0 ? (
+            <Text style={styles.subtitle}>
+              {t(language, "noExercisesAdded")}
+            </Text>
+          ) : (
+            exercises.map((exercise, index) => (
+              <View key={exercise.id} style={styles.listItem}>
+                <Text style={styles.listItemText}>
+                  {index + 1}. {exercise.nombre} · {exercise.series} x{" "}
+                  {exercise.repeticiones}
+                </Text>
+              </View>
+            ))
+          )}
+        </View>
+
         <Pressable
-          style={styles.saveButton}
-          onPress={() => router.push("/(tabs)/routines")}
+          style={[styles.actionButton, styles.primaryButton]}
+          onPress={handleFinish}
         >
-          <Text style={styles.saveButtonText}>Guardar rutina</Text>
+          <Text style={[styles.actionText, styles.primaryButtonText]}>
+            {t(language, "finishRoutine")}
+          </Text>
         </Pressable>
-      </View>
+
+        <View style={{ height: 30 }} />
+      </ScrollView>
     </SafeAreaView>
   );
 }

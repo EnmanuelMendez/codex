@@ -1,175 +1,130 @@
+import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  Alert,
   Pressable,
   SafeAreaView,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { Friend } from "../../models/friend";
 import { FriendRequest } from "../../models/friendRequest";
+import {
+  acceptFriendRequest,
+  getFriends,
+  getReceivedFriendRequests,
+  getSentFriendRequests,
+  rejectFriendRequest,
+  removeFriend,
+  searchUsers,
+  sendFriendRequest,
+} from "../../services/friendService";
+import { createGlobalStyles } from "../styles/createGlobalStyles";
 
-const USERS: Friend[] = [
-  { id: "u1", name: "Juan Pérez", email: "juan@corex.app" },
-  { id: "u2", name: "María López", email: "maria@corex.app" },
-  { id: "u3", name: "Carlos Ruiz", email: "carlos@corex.app" },
-  { id: "u4", name: "Laura Gómez", email: "laura@corex.app" },
-];
+type SearchUserItem = {
+  id: string;
+  username: string;
+  email: string;
+  name: string;
+};
 
-const INITIAL_FRIENDS: Friend[] = [
-  { id: "f1", name: "Pedro Silva", email: "pedro@corex.app" },
-  { id: "f2", name: "Ana Torres", email: "ana@corex.app" },
-];
-
-const INITIAL_RECEIVED_REQUESTS: FriendRequest[] = [
-  {
-    id: "r1",
-    name: "María López",
-    email: "maria@corex.app",
-    status: "received",
-  },
-  {
-    id: "r2",
-    name: "Carlos Ruiz",
-    email: "carlos@corex.app",
-    status: "received",
-  },
-];
-
-function UserCard({ user, onSend, sent, colors }: any) {
+function UserCard({
+  user,
+  onSend,
+  sent,
+  styles,
+}: {
+  user: SearchUserItem;
+  onSend: (user: SearchUserItem) => void;
+  sent: boolean;
+  styles: any;
+}) {
   return (
-    <View
-      style={{
-        backgroundColor: colors.card,
-        borderWidth: 1,
-        borderColor: "#1E3650",
-        borderRadius: 12,
-        paddingHorizontal: 12,
-        paddingVertical: 11,
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-      }}
-    >
-      <View>
-        <Text style={{ color: colors.text, fontWeight: "700" }}>
-          {user.name}
-        </Text>
-        <Text
-          style={{ color: colors.secondaryText, fontSize: 12, marginTop: 2 }}
-        >
-          {user.email}
-        </Text>
+    <View style={styles.userCard}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.userName}>{user.name || user.username}</Text>
+        <Text style={styles.userEmail}>{user.email}</Text>
+        <Text style={styles.userEmail}>@{user.username}</Text>
       </View>
 
       <Pressable
         onPress={() => onSend(user)}
         disabled={sent}
-        style={{
-          backgroundColor: colors.primary,
-          borderRadius: 10,
-          paddingVertical: 8,
-          paddingHorizontal: 12,
-          opacity: sent ? 0.55 : 1,
-        }}
+        style={[styles.sendButton, sent && styles.sendButtonDisabled]}
       >
-        <Text
-          style={{ color: colors.background, fontWeight: "700", fontSize: 12 }}
-        >
-          {sent ? "Enviada" : "Enviar"}
-        </Text>
+        <Text style={styles.sendButtonText}>{sent ? "Enviada" : "Enviar"}</Text>
       </Pressable>
     </View>
   );
 }
 
-function RequestCard({ request, onAccept, colors }: any) {
+function RequestCard({
+  request,
+  onAccept,
+  onReject,
+  styles,
+}: {
+  request: FriendRequest;
+  onAccept: (request: FriendRequest) => void;
+  onReject: (request: FriendRequest) => void;
+  styles: any;
+}) {
   return (
-    <View
-      style={{
-        backgroundColor: colors.card,
-        borderWidth: 1,
-        borderColor: "#1E3650",
-        borderRadius: 12,
-        paddingHorizontal: 12,
-        paddingVertical: 11,
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-      }}
-    >
-      <View>
-        <Text style={{ color: colors.text, fontWeight: "700" }}>
-          {request.name}
-        </Text>
-        <Text style={{ color: colors.secondaryText, fontSize: 12 }}>
-          {request.email}
-        </Text>
+    <View style={styles.userCard}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.userName}>{request.fromName}</Text>
+        <Text style={styles.userEmail}>{request.fromEmail}</Text>
+        <Text style={styles.userEmail}>@{request.fromUsername}</Text>
       </View>
 
-      <Pressable
-        onPress={() => onAccept(request)}
-        style={{
-          borderRadius: 10,
-          borderWidth: 1,
-          borderColor: colors.primary,
-          paddingVertical: 8,
-          paddingHorizontal: 12,
-          backgroundColor: "rgba(163,255,18,0.12)",
-        }}
-      >
-        <Text
-          style={{ color: colors.primary, fontWeight: "700", fontSize: 12 }}
+      <View style={{ gap: 8 }}>
+        <Pressable
+          onPress={() => onAccept(request)}
+          style={styles.acceptButton}
         >
-          Aceptar
-        </Text>
-      </Pressable>
+          <Text style={styles.acceptButtonText}>Aceptar</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => onReject(request)}
+          style={styles.rejectButton}
+        >
+          <Text style={styles.rejectButtonText}>Rechazar</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
 
-function FriendCard({ friend, colors }: any) {
+function FriendCard({
+  friend,
+  onRemove,
+  styles,
+}: {
+  friend: Friend;
+  onRemove: (friend: Friend) => void;
+  styles: any;
+}) {
   return (
-    <View
-      style={{
-        backgroundColor: colors.card,
-        borderWidth: 1,
-        borderColor: "#1E3650",
-        borderRadius: 12,
-        paddingHorizontal: 12,
-        paddingVertical: 11,
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-      }}
-    >
-      <View>
-        <Text style={{ color: colors.text, fontWeight: "700" }}>
-          {friend.name}
-        </Text>
-        <Text style={{ color: colors.secondaryText, fontSize: 12 }}>
-          {friend.email}
-        </Text>
+    <View style={styles.userCard}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.userName}>{friend.name}</Text>
+        <Text style={styles.userEmail}>{friend.email}</Text>
+        <Text style={styles.userEmail}>@{friend.username}</Text>
       </View>
 
-      <View
-        style={{
-          borderRadius: 999,
-          borderWidth: 1,
-          borderColor: colors.primary,
-          paddingHorizontal: 10,
-          paddingVertical: 5,
-          backgroundColor: "rgba(163,255,18,0.12)",
-        }}
-      >
-        <Text
-          style={{ color: colors.primary, fontWeight: "700", fontSize: 11 }}
-        >
-          Amigo
-        </Text>
+      <View style={{ gap: 8 }}>
+        <View style={styles.friendBadge}>
+          <Text style={styles.friendBadgeText}>Amigo</Text>
+        </View>
+
+        <Pressable onPress={() => onRemove(friend)} style={styles.rejectButton}>
+          <Text style={styles.rejectButtonText}>Eliminar</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -177,101 +132,155 @@ function FriendCard({ friend, colors }: any) {
 
 export default function FriendsScreen() {
   const { colors } = useTheme();
+  const { language } = useLanguage();
+  const { user } = useAuth();
+  const styles = useMemo(() => createGlobalStyles(colors), [colors]);
 
-  const [searchEmail, setSearchEmail] = useState("");
-  const [friends, setFriends] = useState<Friend[]>(INITIAL_FRIENDS);
+  const [searchText, setSearchText] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchUserItem[]>([]);
+  const [friends, setFriends] = useState<Friend[]>([]);
   const [sentRequests, setSentRequests] = useState<FriendRequest[]>([]);
-  const [receivedRequests, setReceivedRequests] = useState(
-    INITIAL_RECEIVED_REQUESTS,
-  );
+  const [receivedRequests, setReceivedRequests] = useState<FriendRequest[]>([]);
 
-  const filteredUsers = useMemo(() => {
-    const query = searchEmail.trim().toLowerCase();
-    if (!query) return USERS;
-    return USERS.filter((user) => user.email.toLowerCase().includes(query));
-  }, [searchEmail]);
+  const loadData = async () => {
+    if (!user) return;
 
-  const sendRequest = (user: Friend) => {
-    if (sentRequests.some((r) => r.email === user.email)) return;
-    setSentRequests((prev) => [...prev, { ...user, status: "sent" }]);
+    try {
+      const [friendsData, sentData, receivedData] = await Promise.all([
+        getFriends(user.id),
+        getSentFriendRequests(user.id),
+        getReceivedFriendRequests(user.id),
+      ]);
+
+      setFriends(friendsData);
+      setSentRequests(sentData);
+      setReceivedRequests(receivedData);
+    } catch (error) {
+      console.log("ERROR CARGANDO AMIGOS:", error);
+      Alert.alert("Error", "No se pudieron cargar los datos de amigos.");
+    }
   };
 
-  const acceptRequest = (request: FriendRequest) => {
-    setReceivedRequests((prev) =>
-      prev.filter((item) => item.id !== request.id),
+  useEffect(() => {
+    void loadData();
+  }, [user]);
+
+  const handleSearch = async (value: string) => {
+    setSearchText(value);
+
+    if (!user) return;
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setSearchResults([]);
+      return;
+    }
+
+    try {
+      const results = await searchUsers(user.id, trimmed);
+
+      const filtered = results.filter((result) => {
+        const alreadyFriend = friends.some(
+          (friend) => friend.friendUserId === result.id,
+        );
+
+        const alreadySent = sentRequests.some(
+          (request) =>
+            request.toUserId === result.id && request.status === "pending",
+        );
+
+        return !alreadyFriend && !alreadySent;
+      });
+
+      setSearchResults(filtered);
+    } catch (error) {
+      console.log("ERROR BUSCANDO USUARIOS:", error);
+    }
+  };
+
+  const handleSendRequest = async (targetUser: SearchUserItem) => {
+    if (!user) return;
+
+    try {
+      await sendFriendRequest(
+        {
+          id: user.id,
+          username: user.username || "",
+          email: user.email,
+          firstName: user.profile?.firstName,
+          lastName: user.profile?.lastName,
+        },
+        targetUser,
+      );
+
+      Alert.alert("Éxito", "Solicitud enviada.");
+      await loadData();
+      await handleSearch(searchText);
+    } catch (error: any) {
+      Alert.alert("Error", error?.message || "No se pudo enviar la solicitud.");
+    }
+  };
+
+  const handleAcceptRequest = async (request: FriendRequest) => {
+    if (!user) return;
+
+    try {
+      await acceptFriendRequest(
+        {
+          id: user.id,
+          username: user.username || "",
+          email: user.email,
+          firstName: user.profile?.firstName,
+          lastName: user.profile?.lastName,
+        },
+        request,
+      );
+
+      Alert.alert("Éxito", "Solicitud aceptada.");
+      await loadData();
+    } catch {
+      Alert.alert("Error", "No se pudo aceptar la solicitud.");
+    }
+  };
+
+  const handleRejectRequest = async (request: FriendRequest) => {
+    try {
+      await rejectFriendRequest(request.id);
+      await loadData();
+    } catch {
+      Alert.alert("Error", "No se pudo rechazar la solicitud.");
+    }
+  };
+
+  const handleRemoveFriend = async (friend: Friend) => {
+    if (!user) return;
+
+    Alert.alert(
+      "Eliminar amigo",
+      `¿Quieres eliminar a ${friend.name} de tu lista de amigos?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await removeFriend(user.id, friend.friendUserId);
+              await loadData();
+            } catch {
+              Alert.alert("Error", "No se pudo eliminar el amigo.");
+            }
+          },
+        },
+      ],
     );
-    setFriends((prev) => {
-      if (prev.some((f) => f.email === request.email)) return prev;
-      return [
-        ...prev,
-        { id: request.id, email: request.email, name: request.name },
-      ];
-    });
   };
-
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    content: {
-      paddingHorizontal: 20,
-      paddingTop: 20,
-      paddingBottom: 24,
-    },
-    title: {
-      color: colors.text,
-      fontSize: 30,
-      fontWeight: "700",
-    },
-    subtitle: {
-      color: colors.secondaryText,
-      marginTop: 4,
-      marginBottom: 16,
-    },
-    section: {
-      backgroundColor: colors.card,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: "#1E3650",
-      padding: 14,
-      marginBottom: 14,
-    },
-    sectionTitle: {
-      color: colors.secondaryText,
-      fontSize: 16,
-      fontWeight: "700",
-      marginBottom: 10,
-    },
-    searchInput: {
-      backgroundColor: "#7b91ab",
-      borderWidth: 1,
-      borderColor: "#1E3650",
-      borderRadius: 12,
-      color: colors.text,
-      paddingHorizontal: 12,
-      paddingVertical: 11,
-      marginBottom: 10,
-    },
-    list: {
-      gap: 8,
-    },
-    emptyText: {
-      color: colors.secondaryText,
-      fontSize: 13,
-    },
-    space: {
-      flex: 0,
-      paddingTop: 40,
-    },
-  });
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.space} />
-
+    <SafeAreaView style={styles.screen}>
+      <View style={styles.topSpaceLarge} />
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.contentContainer, { paddingBottom: 24 }]}
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.title}>Amigos</Text>
@@ -279,33 +288,40 @@ export default function FriendsScreen() {
           Busca usuarios y comparte tus rutinas
         </Text>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Buscar por email</Text>
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Buscar por username o email</Text>
+
           <TextInput
-            value={searchEmail}
-            onChangeText={setSearchEmail}
-            placeholder="ejemplo@correo.com"
+            value={searchText}
+            onChangeText={handleSearch}
+            placeholder="usuario o correo"
             placeholderTextColor={colors.secondaryText}
-            style={styles.searchInput}
+            style={[styles.input, { marginBottom: styles.list.gap }]}
             autoCapitalize="none"
-            keyboardType="email-address"
           />
 
           <View style={styles.list}>
-            {filteredUsers.map((user) => (
-              <UserCard
-                key={user.id}
-                user={user}
-                onSend={sendRequest}
-                sent={sentRequests.some((r) => r.email === user.email)}
-                colors={colors}
-              />
-            ))}
+            {searchResults.length === 0 && searchText.trim() ? (
+              <Text style={styles.emptyText}>No se encontraron usuarios.</Text>
+            ) : (
+              searchResults.map((searchUser) => (
+                <UserCard
+                  key={searchUser.id}
+                  user={searchUser}
+                  onSend={handleSendRequest}
+                  sent={sentRequests.some(
+                    (request) => request.toUserId === searchUser.id,
+                  )}
+                  styles={styles}
+                />
+              ))
+            )}
           </View>
         </View>
 
-        <View style={styles.section}>
+        <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Solicitudes recibidas</Text>
+
           {receivedRequests.length === 0 ? (
             <Text style={styles.emptyText}>
               No tienes solicitudes pendientes.
@@ -316,21 +332,32 @@ export default function FriendsScreen() {
                 <RequestCard
                   key={request.id}
                   request={request}
-                  onAccept={acceptRequest}
-                  colors={colors}
+                  onAccept={handleAcceptRequest}
+                  onReject={handleRejectRequest}
+                  styles={styles}
                 />
               ))}
             </View>
           )}
         </View>
 
-        <View style={styles.section}>
+        <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Tu lista de amigos</Text>
-          <View style={styles.list}>
-            {friends.map((friend) => (
-              <FriendCard key={friend.id} friend={friend} colors={colors} />
-            ))}
-          </View>
+
+          {friends.length === 0 ? (
+            <Text style={styles.emptyText}>Todavía no tienes amigos.</Text>
+          ) : (
+            <View style={styles.list}>
+              {friends.map((friend) => (
+                <FriendCard
+                  key={friend.id}
+                  friend={friend}
+                  onRemove={handleRemoveFriend}
+                  styles={styles}
+                />
+              ))}
+            </View>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>

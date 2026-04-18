@@ -1,290 +1,247 @@
+import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
-import { router } from "expo-router";
-import React from "react";
+import { Routine } from "@/models/workout";
+import { getRoutineById, getUserRoutines } from "@/services/routineService";
 import {
+  clearWorkoutState,
+  getActiveWorkoutState,
+  getSelectedRoutine,
+} from "@/services/trainingService";
+import { router, useFocusEffect } from "expo-router";
+import React, { useCallback, useMemo, useState } from "react";
+import {
+  Alert,
+  Modal,
   Pressable,
   SafeAreaView,
   ScrollView,
-  StyleSheet,
   Text,
   View,
 } from "react-native";
+import { createGlobalStyles } from "../styles/createGlobalStyles";
 
-type Exercise = {
-  id: string;
-  nombre: string;
-  grupo: string;
-  detalle: string;
-  estado: "Pendiente" | "Completado";
-};
-
-const EXERCISES: Exercise[] = [
-  {
-    id: "1",
-    nombre: "Flexiones",
-    grupo: "Pecho",
-    detalle: "3 x 12",
-    estado: "Completado",
-  },
-  {
-    id: "2",
-    nombre: "Sentadillas",
-    grupo: "Piernas",
-    detalle: "3 x 15",
-    estado: "Completado",
-  },
-  {
-    id: "3",
-    nombre: "Plancha",
-    grupo: "Core",
-    detalle: "45 segundos",
-    estado: "Pendiente",
-  },
-  {
-    id: "4",
-    nombre: "Burpees",
-    grupo: "Cardio",
-    detalle: "3 x 10",
-    estado: "Pendiente",
-  },
-  {
-    id: "5",
-    nombre: "Zancadas",
-    grupo: "Piernas",
-    detalle: "2 x 12 por lado",
-    estado: "Pendiente",
-  },
-  {
-    id: "6",
-    nombre: "Mountain climbers",
-    grupo: "Cardio",
-    detalle: "30 segundos",
-    estado: "Pendiente",
-  },
-];
-
-function ProgressCard({ colors }: any) {
-  const progress = 0.5;
+function ProgressCard({
+  styles,
+  selectedRoutine,
+  activeWorkout,
+}: {
+  styles: any;
+  selectedRoutine: Routine | null;
+  activeWorkout: any;
+}) {
+  const total = selectedRoutine?.ejercicios.length || 0;
+  const currentIndex = activeWorkout?.currentIndex || 0;
+  const completed = activeWorkout?.started ? currentIndex : 0;
+  const progress = total > 0 ? completed / total : 0;
 
   return (
-    <View
-      style={{
-        backgroundColor: colors.card,
-        borderRadius: 18,
-        padding: 16,
-        marginBottom: 20,
-        shadowColor: "#000",
-        shadowOpacity: 0.25,
-        shadowRadius: 10,
-        shadowOffset: { width: 0, height: 6 },
-        elevation: 4,
-      }}
-    >
-      <Text
-        style={{
-          color: colors.text,
-          fontSize: 18,
-          fontWeight: "700",
-          marginBottom: 12,
-        }}
-      >
-        Progreso de hoy
-      </Text>
-
-      <View
-        style={{
-          height: 12,
-          width: "100%",
-          borderRadius: 999,
-          backgroundColor: "#1C3349",
-          overflow: "hidden",
-          marginBottom: 10,
-        }}
-      >
+    <View style={styles.progressCard}>
+      <Text style={styles.progressTitle}>Progreso de hoy</Text>
+      <View style={styles.progressBarBackground}>
         <View
-          style={{
-            height: "100%",
-            borderRadius: 999,
-            width: `${progress * 100}%`,
-            backgroundColor: colors.primary,
-          }}
+          style={[styles.progressBarFill, { width: `${progress * 100}%` }]}
         />
       </View>
-
-      <Text style={{ color: colors.secondaryText, fontSize: 14 }}>
-        3 de 6 ejercicios completados
+      <Text style={styles.progressText}>
+        {total > 0
+          ? `${completed} de ${total} ejercicios completados`
+          : "No hay rutina seleccionada"}
       </Text>
     </View>
   );
 }
 
-function ExerciseCard({
-  exercise,
-  colors,
-}: {
-  exercise: Exercise;
-  colors: any;
-}) {
+function ExerciseCard({ exercise, styles }: { exercise: any; styles: any }) {
   const completed = exercise.estado === "Completado";
 
   return (
-    <View
-      style={{
-        backgroundColor: colors.card,
-        borderRadius: 14,
-        paddingVertical: 14,
-        paddingHorizontal: 14,
-        borderWidth: 1,
-        borderColor: "#1E3650",
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-      }}
-    >
+    <View style={styles.exerciseCard}>
       <View>
-        <Text style={{ color: colors.text, fontSize: 16, fontWeight: "700" }}>
-          {exercise.nombre}
-        </Text>
-        <Text
-          style={{ color: colors.secondaryText, fontSize: 13, marginTop: 4 }}
-        >
+        <Text style={styles.exerciseName}>{exercise.nombre}</Text>
+        <Text style={styles.exerciseMeta}>
           {exercise.grupo} • {exercise.detalle}
         </Text>
       </View>
-
       <View
-        style={{
-          borderRadius: 999,
-          paddingHorizontal: 10,
-          paddingVertical: 6,
-          borderWidth: 1,
-          backgroundColor: completed ? "rgba(163,255,18,0.18)" : "#1F2F41",
-          borderColor: completed ? "rgba(163,255,18,0.5)" : "#36506E",
-        }}
+        style={[
+          styles.exerciseStatusBadge,
+          completed
+            ? styles.exerciseStatusBadgeCompleted
+            : styles.exerciseStatusBadgePending,
+        ]}
       >
         <Text
-          style={{
-            fontSize: 12,
-            fontWeight: "700",
-            color: completed ? colors.primary : "#BFD0E1",
-          }}
+          style={[
+            styles.exerciseStatusText,
+            completed
+              ? styles.exerciseStatusTextCompleted
+              : styles.exerciseStatusTextPending,
+          ]}
         >
-          {exercise.estado}
+          {completed ? "Completado" : "Pendiente"}
         </Text>
+      </View>
+    </View>
+  );
+}
+
+function RoutinePickerCard({
+  routine,
+  onChoose,
+  styles,
+}: {
+  routine: Routine;
+  onChoose: (routine: Routine) => void;
+  styles: any;
+}) {
+  return (
+    <View style={styles.routineCard}>
+      <View style={styles.routineCardAccent} />
+      <View style={styles.routineCardContent}>
+        <Text style={styles.routineCardTitle}>{routine.nombre}</Text>
+        <Text style={styles.routineCardMeta}>
+          {routine.ejercicios.length} ejercicios
+        </Text>
+
+        <Pressable
+          style={[styles.actionButton, styles.primaryButton, { marginTop: 12 }]}
+          onPress={() => onChoose(routine)}
+        >
+          <Text style={[styles.actionText, styles.primaryButtonText]}>
+            Elegir rutina
+          </Text>
+        </Pressable>
       </View>
     </View>
   );
 }
 
 export default function HomeScreen() {
+  const { user } = useAuth();
   const { colors } = useTheme();
+  const styles = useMemo(() => createGlobalStyles(colors), [colors]);
 
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    content: {
-      paddingHorizontal: 20,
-      paddingTop: 16,
-      paddingBottom: 120,
-    },
-    headerRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: 18,
-    },
-    title: {
-      color: colors.text,
-      fontSize: 30,
-      fontWeight: "700",
-    },
-    subtitle: {
-      color: colors.secondaryText,
-      fontSize: 15,
-      marginTop: 2,
-    },
-    avatarPlaceholder: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: "#1E3650",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    avatarText: {
-      color: colors.primary,
-      fontWeight: "700",
-      fontSize: 18,
-    },
-    sectionHeader: {
-      marginBottom: 10,
-    },
-    sectionTitle: {
-      color: colors.text,
-      fontSize: 20,
-      fontWeight: "700",
-    },
-    exerciseList: {
-      gap: 10,
-    },
-    footer: {
-      position: "absolute",
-      left: 0,
-      right: 0,
-      bottom: 0,
-      paddingHorizontal: 20,
-      paddingTop: 10,
-      paddingBottom: 20,
-      backgroundColor: colors.background,
-    },
-    startButton: {
-      backgroundColor: colors.primary,
-      borderRadius: 14,
-      paddingVertical: 15,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    startButtonText: {
-      color: colors.background,
-      fontSize: 16,
-      fontWeight: "800",
-    },
-    routineButton: {
-      backgroundColor: "#8AA0B8",
-      paddingVertical: 14,
-      borderRadius: 12,
-      alignItems: "center",
-      marginTop: 20,
-      marginBottom: 20,
-      paddingHorizontal: 16,
-    },
-    routineButtonText: {
-      color: "#0B1A2A",
-      fontWeight: "700",
-      fontSize: 16,
-    },
-    space: {
-      flex: 0,
-      paddingTop: 40,
-    },
-  });
+  const [selectedRoutine, setSelectedRoutine] = useState<Routine | null>(null);
+  const [activeWorkout, setActiveWorkout] = useState<any>(null);
+  const [allRoutines, setAllRoutines] = useState<Routine[]>([]);
+  const [routineModalVisible, setRoutineModalVisible] = useState(false);
+
+  const loadTrainingData = async () => {
+    if (!user) return;
+
+    const [selected, active, routines] = await Promise.all([
+      getSelectedRoutine(user.id),
+      getActiveWorkoutState(user.id),
+      getUserRoutines(user.id),
+    ]);
+
+    setActiveWorkout(active);
+    setAllRoutines(routines);
+
+    if (selected?.selectedRoutineId) {
+      const routine = await getRoutineById(user.id, selected.selectedRoutineId);
+      setSelectedRoutine(routine);
+    } else {
+      setSelectedRoutine(null);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadTrainingData();
+    }, [user]),
+  );
+
+  const hasActiveWorkout =
+    activeWorkout?.started &&
+    !activeWorkout?.completed &&
+    !!activeWorkout?.routineId;
+
+  const handleWorkoutPress = async () => {
+    if (!user) return;
+
+    if (hasActiveWorkout && selectedRoutine) {
+      router.push({
+        pathname: "/workout",
+        params: {
+          routine: JSON.stringify(selectedRoutine),
+        },
+      });
+      return;
+    }
+
+    setRoutineModalVisible(true);
+  };
+
+  const handleChooseRoutine = (routine: Routine) => {
+    setRoutineModalVisible(false);
+
+    router.push({
+      pathname: "/mood",
+      params: {
+        routine: JSON.stringify(routine),
+      },
+    });
+  };
+
+  const handleAbandonRoutine = async () => {
+    if (!user) return;
+
+    Alert.alert(
+      "Abandonar rutina",
+      "¿Seguro que quieres abandonar la rutina actual?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Abandonar",
+          style: "destructive",
+          onPress: async () => {
+            await clearWorkoutState(user.id);
+            await loadTrainingData();
+          },
+        },
+      ],
+    );
+  };
+
+  const handleFinishRoutine = async () => {
+    if (!user) return;
+
+    Alert.alert(
+      "Terminar rutina",
+      "¿Deseas marcar la rutina como terminada?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Terminar",
+          onPress: async () => {
+            await clearWorkoutState(user.id);
+            await loadTrainingData();
+          },
+        },
+      ],
+    );
+  };
+
+  const actionLabel = hasActiveWorkout
+    ? "Seguir entrenamiento"
+    : "Comenzar entrenamiento";
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.homeContent, { paddingBottom: 160 }]}
       >
-        <View style={styles.space} />
+        <View style={styles.topSpaceLarge} />
 
         <View style={styles.headerRow}>
           <View>
             <Text style={styles.title}>Inicio</Text>
-            <Text style={styles.subtitle}>Entrenamiento de hoy</Text>
+            <Text style={styles.subtitle}>
+              {selectedRoutine
+                ? `Rutina del día: ${selectedRoutine.nombre}`
+                : "Elige una rutina para entrenar hoy"}
+            </Text>
           </View>
 
           <Pressable
@@ -302,28 +259,105 @@ export default function HomeScreen() {
           <Text style={styles.routineButtonText}>Ver Mis Rutinas</Text>
         </Pressable>
 
-        <ProgressCard colors={colors} />
+        <ProgressCard
+          styles={styles}
+          selectedRoutine={selectedRoutine}
+          activeWorkout={activeWorkout}
+        />
 
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Ejercicios del día</Text>
+          <Text style={styles.homeSectionTitle}>
+            {selectedRoutine
+              ? "Ejercicios de la rutina seleccionada"
+              : "Sin rutina seleccionada"}
+          </Text>
         </View>
 
         <View style={styles.exerciseList}>
-          {EXERCISES.map((exercise) => (
-            <ExerciseCard
-              key={exercise.id}
-              exercise={exercise}
-              colors={colors}
-            />
-          ))}
+          {selectedRoutine?.ejercicios?.length ? (
+            selectedRoutine.ejercicios.map((exercise) => (
+              <ExerciseCard
+                key={exercise.id}
+                exercise={exercise}
+                styles={styles}
+              />
+            ))
+          ) : (
+            <Text style={styles.subtitle}>
+              Presiona comenzar entrenamiento para elegir una rutina.
+            </Text>
+          )}
         </View>
       </ScrollView>
 
-      <View style={styles.footer}>
-        <Pressable style={styles.startButton}>
-          <Text style={styles.startButtonText}>Comenzar entrenamiento</Text>
+      <View style={styles.homeFooter}>
+        <Pressable
+          style={[styles.actionButton, styles.primaryButton]}
+          onPress={handleWorkoutPress}
+          disabled={!hasActiveWorkout && allRoutines.length === 0}
+        >
+          <Text style={[styles.actionText, styles.primaryButtonText]}>
+            {actionLabel}
+          </Text>
         </Pressable>
+
+        {hasActiveWorkout ? (
+          <>
+            <Pressable
+              style={[styles.actionButton, styles.secondaryButton]}
+              onPress={handleAbandonRoutine}
+            >
+              <Text style={[styles.actionText, styles.secondaryButtonText]}>
+                Abandonar rutina
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={[styles.actionButton, styles.secondaryButton]}
+              onPress={handleFinishRoutine}
+            >
+              <Text style={[styles.actionText, styles.secondaryButtonText]}>
+                Terminar rutina
+              </Text>
+            </Pressable>
+          </>
+        ) : null}
       </View>
+
+      <Modal visible={routineModalVisible} animationType="slide" transparent>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Elige una rutina</Text>
+
+            <ScrollView
+              style={{ maxHeight: 350, marginTop: 12 }}
+              showsVerticalScrollIndicator={false}
+            >
+              {allRoutines.length === 0 ? (
+                <Text style={styles.emptyText}>No tienes rutinas creadas.</Text>
+              ) : (
+                allRoutines.map((routine) => (
+                  <RoutinePickerCard
+                    key={routine.id}
+                    routine={routine}
+                    onChoose={handleChooseRoutine}
+                    styles={styles}
+                  />
+                ))
+              )}
+            </ScrollView>
+
+            <Pressable
+              style={[styles.actionButton, styles.secondaryButton]}
+              onPress={() => setRoutineModalVisible(false)}
+            >
+              <Text style={[styles.actionText, styles.secondaryButtonText]}>
+                Cancelar
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
